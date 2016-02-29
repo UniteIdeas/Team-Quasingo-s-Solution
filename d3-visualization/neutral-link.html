@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Abel);
+      body {
+          font-family: 'Abel', sans-serif; 
+          line-height: 160%; 
+          font-size: 18px;  
+          margin: 0; 
+        }
+      
+      #tooltip {
+        color: #fff;
+        opacity: .9;
+        background: #333;
+        padding: 5px;
+        border-radius: 5px;
+        position: absolute;
+        z-index: 10;
+        visibility: hidden;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      #circle circle {
+        fill: none;
+        pointer-events: all;
+      }
+      path.group {
+        fill-opacity: .8;
+      }
+      path.chord {
+        fill-opacity: .8;
+        stroke: #000;
+        stroke-width: 0.25px;
+      }
+      #circle:hover path.d3fade {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <center> Below is a chord diagram showing the neutral links between SDG11 (Sustainable cities &amp; communities). There are 121,462 links in total. </center> <center> Hover over an arc or chord to find out more about a specific entity or relationship. </center>
+    
+    <div id="tooltip"></div>
+    <script src="lib/d3.js"></script>
+    <script src="lib/underscore.js"></script>
+    <script src="js/mapper.js"></script>
+    <script>
+      /* Code adapted from the interactive D3 chord digrams by Steven Hall */
+        
+      //*******************************************************************
+      //  CREATE MATRIX AND MAP
+      //*******************************************************************
+      
+      // positions the visualization
+      var margin = {top: 500, right: 0, bottom: 0, left: window.innerWidth/2},
+		width = window.innerWidth - margin.left - margin.right,
+		height = 1300 - margin.top - margin.bottom;
+        
+      d3.tsv('data/Neutrals.txt', function (error, data) {
+        var mpr = chordMpr(data);
+
+        mpr
+          .addValuesToMap('sdgPrevWord')
+          .setFilter(function (row, a, b) {
+            return (row.sdgPrevWord === a.name && row.sdgSucWord === b.name)
+          })
+          .setAccessor(function (recs, a, b) {
+            if (!recs[0]) return 0;
+            return +recs[0].count;
+          });
+        drawChords(mpr.getMatrix(), mpr.getMap());
+      });
+      //*******************************************************************
+      //  DRAW THE CHORD DIAGRAM
+      //*******************************************************************
+      function drawChords (matrix, mmap) {
+        var r1 = height / 2, r0 = r1 - 100;
+
+        var fill = d3.scale.category20();
+          
+        var chord = d3.layout.chord()
+            .padding(.02)
+            .sortSubgroups(d3.descending)
+            .sortChords(d3.descending);
+
+        var arc = d3.svg.arc()
+            .innerRadius(r0)
+            .outerRadius(r0 + 20);
+
+        var svg = d3.select("body")
+            .append("svg:svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("svg:g")
+            .attr("id", "circle")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            svg.append("circle")
+                .attr("r", r0 + 20);
+
+        var rdr = chordRdr(matrix, mmap);
+        chord.matrix(matrix);
+
+        var g = svg.selectAll("g.group")
+            .data(chord.groups())
+          .enter().append("svg:g")
+            .attr("class", "group") 
+            .on("mouseover", mouseover)
+            .on("mouseout", function (d) { d3.select("#tooltip").style("visibility", "hidden") });
+
+        // draw arcs
+        g.append("svg:path")
+            .style("stroke", "none")
+            .style("fill", function(d) { return fill(d.index); })
+            .attr("d", arc);
+
+        g.append("svg:text")
+            .each(function(d) { d.angle = (d.startAngle + d.endAngle) / 2; })
+            .attr("dy", ".35em")
+            .style("font-size", "14px")
+            .attr("text-anchor", function(d) { return d.angle > Math.PI ? "end" : null; })
+            .attr("transform", function(d) {
+              return "rotate(" + (d.angle * 180 / Math.PI - 90) + ")"
+                  + "translate(" + (r0 + 26) + ")"
+                  + (d.angle > Math.PI ? "rotate(180)" : "");
+            })
+            .text(function(d) { 
+            var SDGdict = {}; 
+            
+                  SDGdict["No Poverty"] = "SDG 1"; 
+                  SDGdict["Zero Hunger"] = "SDG 2"; 
+                  SDGdict["Good Health and Well-Being"] = "SDG 3"; 
+                  SDGdict["Quality Education"] = "SDG 4"; 
+                  SDGdict["Gender Equality"] = "SDG 5"; 
+                  SDGdict["Clean Water and Sanitation"] = "SDG 6"; 
+                  SDGdict["Affordable and Clean Energy"] = "SDG 7"; 
+                  SDGdict["Decent Work and Economic Growth"] = "SDG 8"; 
+                  SDGdict["Industry, Innovation, and Infrastructure"] = "SDG 9"; 
+                  SDGdict["Reduced Inequalities"] = "SDG 10"; 
+                  SDGdict["Sustainable Cities and Communities"] = "SDG 11"; 
+                  SDGdict["Responsible Consumption and Production"] = "SDG 12"; 
+                  SDGdict["Climate Action"] = "SDG 13"; 
+                  SDGdict["Life Below Water"] = "SDG 14"; 
+                  SDGdict["Life On Land"] = "SDG 15"; 
+                  SDGdict["Peace, Justice, and Strong Institutions"] = "SDG 16"; 
+                  SDGdict["Partnerships for the Goals"] = "SDG 17"; 
+            
+                return SDGdict[rdr(d).gname] +": " + rdr(d).gname; 
+        });
+
+          // draw chords
+          var chordPaths = svg.selectAll("path.chord")
+                .data(chord.chords())
+              .enter().append("svg:path")
+                .attr("class", "chord")
+                .style("stroke", "none")
+                .style("fill", function(d) { 
+                    // relationship is going from SDG 11 to SDG X
+                    if(d.source.index === 16 && d.target.index !== 16)
+                        return fill(d.target.index); 
+                    
+                    // relationship is going from SDG X to SDG 11
+                    return fill(d.source.index); 
+                })
+                .attr("d", d3.svg.chord().radius(r0))
+                .on("mouseover", function (d) {
+                  d3.select("#tooltip")
+                    .style("visibility", "visible")
+                    .html(chordTip(rdr(d)))
+                    .style("top", function () { return (d3.event.pageY - 100)+"px"})
+                    .style("left", function () { return (d3.event.pageX - 100)+"px";})
+                })
+                .on("mouseout", function (d) {          
+                    d3.select("#tooltip")
+                      .style("visibility", "hidden") 
+                      
+                });
+
+          function chordTip (d) {
+            var p = d3.format(".2%"), q = d3.format(",.3r");
+              
+              // dictionary that maps an SDG name to its symbol
+              var SDGdict = {}; 
+             
+              SDGdict["No Poverty"] = "SDG 1"; 
+              SDGdict["Zero Hunger"] = "SDG 2"; 
+              SDGdict["Good Health and Well-Being"] = "SDG 3"; 
+              SDGdict["Quality Education"] = "SDG 4"; 
+              SDGdict["Gender Equality"] = "SDG 5"; 
+              SDGdict["Clean Water and Sanitation"] = "SDG 6"; 
+              SDGdict["Affordable and Clean Energy"] = "SDG 7"; 
+              SDGdict["Decent Work and Economic Growth"] = "SDG 8"; 
+              SDGdict["Industry, Innovation, and Infrastructure"] = "SDG 9"; 
+              SDGdict["Reduced Inequalities"] = "SDG 10"; 
+              SDGdict["Sustainable Cities and Communities"] = "SDG 11"; 
+              SDGdict["Responsible Consumption and Production"] = "SDG 12"; 
+              SDGdict["Climate Action"] = "SDG 13"; 
+              SDGdict["Life Below Water"] = "SDG 14"; 
+              SDGdict["Life On Land"] = "SDG 15"; 
+              SDGdict["Peace, Justice, and Strong Institutions"] = "SDG 16"; 
+              SDGdict["Partnerships for the Goals"] = "SDG 17"; 
+            
+              var output =  "Relationship Info:<br/>"; 
+              
+              if(d.svalue !== d.stotal) {
+                  output += p(d.tvalue/63313) + " of neutral links to " + SDGdict[d.sname] + " come from " + SDGdict[d.tname] + "<br/>";
+                  output += p(d.svalue/d.stotal) + " of neutral links from " + SDGdict[d.sname] + " go to " + SDGdict[d.tname] + "<br/><br/>"; 
+                  
+                  output += p(d.svalue/d.mtotal) + " of all neutral links go from " + SDGdict[d.sname] + " to " + SDGdict[d.tname] + "<br/>"; 
+                  output += p(d.tvalue/d.mtotal) + " of all neutral links go from " + SDGdict[d.tname] + " to " + SDGdict[d.sname]; 
+                  
+              }
+              
+              else if(d.tvalue !== d.ttotal) {
+                  output += p(d.svalue/63313) + " of neutral links to " + SDGdict[d.tname] + " come from " + SDGdict[d.sname] + "<br/>";
+                  output += p(d.tvalue/d.ttotal) + " of neutral links from " + SDGdict[d.tname] + " go to " + SDGdict[d.sname]+ "<br/><br/>"; 
+                  
+                  output += p(d.svalue/d.mtotal) + " of all neutral links go from " + SDGdict[d.sname] + " to " + SDGdict[d.tname] + "<br/>"; 
+                  output += p(d.tvalue/d.mtotal) + " of all neutral links go from " + SDGdict[d.tname] + " to " + SDGdict[d.sname]; 
+              }
+            
+            return output; 
+          }
+
+          function groupTip (d) {
+            var p = d3.format(".1%"), q = d3.format(",.3r"), k = d3.format(Number.toString)
+            
+            // dictionary that maps an SDG name to its symbol
+              var SDGdict = {}; 
+              
+            SDGdict["No Poverty"] = "SDG 1"; 
+              SDGdict["Zero Hunger"] = "SDG 2"; 
+              SDGdict["Good Health and Well-Being"] = "SDG 3"; 
+              SDGdict["Quality Education"] = "SDG 4"; 
+              SDGdict["Gender Equality"] = "SDG 5"; 
+              SDGdict["Clean Water and Sanitation"] = "SDG 6"; 
+              SDGdict["Affordable and Clean Energy"] = "SDG 7"; 
+              SDGdict["Decent Work and Economic Growth"] = "SDG 8"; 
+              SDGdict["Industry, Innovation, and Infrastructure"] = "SDG 9"; 
+              SDGdict["Reduced Inequalities"] = "SDG 10"; 
+              SDGdict["Sustainable Cities and Communities"] = "SDG 11"; 
+              SDGdict["Responsible Consumption and Production"] = "SDG 12"; 
+              SDGdict["Climate Action"] = "SDG 13"; 
+              SDGdict["Life Below Water"] = "SDG 14"; 
+              SDGdict["Life On Land"] = "SDG 15"; 
+              SDGdict["Peace, Justice, and Strong Institutions"] = "SDG 16"; 
+              SDGdict["Partnerships for the Goals"] = "SDG 17"; 
+            
+            return "Information for " + SDGdict[d.gname] + ":<br/>"
+                + k(d.gvalue) + " outgoing links (" + p(d.gvalue/d.mtotal) + " of Total)" 
+          }
+
+          function mouseover(d, i) {
+            d3.select("#tooltip")
+              .style("visibility", "visible")
+              .html(groupTip(rdr(d)))
+              .style("top", function () { return (d3.event.pageY - 80)+"px"})
+              .style("left", function () { return (d3.event.pageX - 130)+"px";})
+
+            chordPaths.classed("d3fade", function(p) {
+              return p.source.index != i
+                  && p.target.index != i;
+            });
+            
+          }
+          
+      }
+
+    </script>
+    
+  </body>
+</html>
